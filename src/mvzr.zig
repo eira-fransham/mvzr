@@ -101,8 +101,8 @@ pub const Regex: type = SizedRegex(MAX_REGEX_OPS, MAX_CHAR_SETS);
 
 pub fn SizedRegex(ops: comptime_int, char_sets: comptime_int) type {
     return struct {
-        patt: [ops]RegOp = [1]RegOp{.{ .unused = {} }} ** ops,
-        sets: [char_sets]CharSet = [1]CharSet{.{ .low = 0, .hi = 0 }} ** char_sets,
+        patt: [ops]RegOp = @splat(.{ .unused = {} }),
+        sets: [char_sets]CharSet = @splat(.{ .low = 0, .hi = 0 }),
 
         const SizedRegexT = @This();
 
@@ -2311,11 +2311,26 @@ test "match some things" {
     try testMatchAll("^[a-zA-Z0-9_!#$%&.-]+@([a-zA-Z0-9.-])+$", "myname.myfirst_name@gmail.com");
 
     // Non-catastropic backtracking #1
-    try testFail("(a+a+)+b", "a" ** 2048);
+    const a_2048: [2048]u8 = @splat('a');
+    try testFail("(a+a+)+b", &a_2048);
     // Non-catastropic backtracking #2
-    try testFail("(a+?a+?)+?b", "a" ** 2048);
+    try testFail("(a+?a+?)+?b", &a_2048);
     // Non-catastropic backtracking #3
-    try testFail("^(.*?,){254}P", "12345," ** 255);
+    const repeated = comptimeRepeat(u8, "12345,", 255);
+    try testFail("^(.*?,){254}P", &repeated);
+}
+
+inline fn comptimeRepeat(comptime T: type, comptime str: []const T, comptime count: comptime_int) [str.len * count]T {
+    comptime {
+        @setEvalBranchQuota(2048);
+        var out: [str.len * count]T = undefined;
+
+        for (0..out.len) |i| {
+            out[i] = str[i % str.len];
+        }
+
+        return out;
+    }
 }
 
 test "heap allocated regex and match" {
